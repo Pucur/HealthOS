@@ -5,6 +5,8 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
+const char* app_version = "v0.6";
+
 #define ROTATION 3
 #define GFX_BL 23
 
@@ -33,7 +35,7 @@ struct FoodItem {
   float kcal_per_100;
 };
 
-FoodItem foods[16];
+FoodItem foods[64];
 int food_count = 0;
 
 Arduino_DataBus *bus = new Arduino_HWSPI(15, 14, 1, 2);
@@ -150,9 +152,22 @@ void send_food_to_server(const char* food, float amount) {
   load_kcal();
 }
 
-void add_food_button(const char* name, int x, int y) {
+void add_food_button(const char* name, int index) {
+
+  const int gap = 6;
+  const int cols = 3;
+
+  int btn_w = (screenWidth - gap * (cols + 1)) / cols;
+  int btn_h = 45;
+
+  int col = index % cols;
+  int row = index / cols;
+
+  int x = gap + col * (btn_w + gap);
+  int y = gap + row * (btn_h + gap);
+
   lv_obj_t *btn = lv_btn_create(btn_container);
-  lv_obj_set_size(btn, 100, 40);
+  lv_obj_set_size(btn, btn_w, btn_h);
   lv_obj_set_pos(btn, x, y);
 
   lv_obj_t *label = lv_label_create(btn);
@@ -160,7 +175,7 @@ void add_food_button(const char* name, int x, int y) {
   lv_obj_center(label);
 
   lv_obj_add_event_cb(btn, food_btn_cb, LV_EVENT_LONG_PRESSED, (void*)name);
-  lv_obj_set_style_bg_color(btn, lv_color_hex(0xff0000), LV_PART_MAIN | LV_STATE_PRESSED);
+  lv_obj_set_style_bg_color(btn,lv_color_hex(0xff0000),LV_PART_MAIN | LV_STATE_PRESSED);
 }
 
 void clear_food_buttons() {
@@ -180,7 +195,7 @@ void load_foods_from_server() {
 
   int idx = 0;
   for (JsonObject item : arr) {
-    if (idx >= 16) break;
+    if (idx >= 64) break;
     foods[idx].name = item["name"].as<String>();
     foods[idx].kcal_per_100 = item["kcal_per_100"] | 0.0f;
     idx++;
@@ -188,20 +203,9 @@ void load_foods_from_server() {
 
   food_count = idx;
 
-  int cols = screenWidth / 84;
-  int x = 4;
-  int y = 4;
-
-  for (int i = 0; i < food_count; i++) {
-    add_food_button(foods[i].name.c_str(), x, y);
-
-    x += 106;
-
-    if ((i + 1) % cols == 0) {
-      x = 4;
-      y += 42;
-    }
-  }
+for (int i = 0; i < food_count; i++) {
+    add_food_button(foods[i].name.c_str(), i);
+}
 }
 
 void load_kcal() {
@@ -212,7 +216,9 @@ void load_kcal() {
   float total = doc["total_kcal"] | 0.0f;
 
   char buf[64];
-  snprintf(buf, sizeof(buf), "Mai kaloria:\n%.0f kcal", total);
+  snprintf(buf, sizeof(buf),
+         "HealthOS %s || Mai kaloria: %.0f kcal",
+         app_version, total);
   lv_label_set_text(label_kcal, buf);
 
   lv_color_t color;
@@ -273,20 +279,34 @@ void food_btn_cb(lv_event_t *e) {
 }
 
 void create_home() {
-  lv_obj_t *title = lv_label_create(lv_scr_act());
-  lv_label_set_text(title, "HealthOS");
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 5);
+  lv_obj_t *root = lv_scr_act();
 
-  label_kcal = lv_label_create(lv_scr_act());
-  lv_label_set_text(label_kcal, "Mai kaloria:\n0 kcal");
-  lv_obj_align(label_kcal, LV_ALIGN_TOP_LEFT, 10, 30);
+  /* ===== BACKGROUND STYLE ===== */
+  static lv_style_t style_bg;
+  lv_style_init(&style_bg);
 
-  btn_container = lv_obj_create(lv_scr_act());
-  lv_obj_set_size(btn_container, screenWidth, screenHeight - 50);
-  lv_obj_align(btn_container, LV_ALIGN_TOP_LEFT, 0, 70);
+  lv_style_set_bg_color(&style_bg, lv_color_hex(0x1E2A3A));
+  lv_style_set_bg_grad_color(&style_bg, lv_color_hex(0x0B0F14));
+  lv_style_set_bg_grad_dir(&style_bg, LV_GRAD_DIR_VER);
+
+  lv_obj_add_style(root, &style_bg, 0);
+
+  /* ===== HEADER LABEL ===== */
+  label_kcal = lv_label_create(root);
+
+  lv_label_set_text(label_kcal, "HealthOS Loading...");
+  lv_obj_align(label_kcal, LV_ALIGN_TOP_MID, 0, 3);
+
+  /* ===== BUTTON AREA ===== */
+  btn_container = lv_obj_create(root);
+  lv_obj_set_size(btn_container, screenWidth, screenHeight - 20);
+  lv_obj_align(btn_container, LV_ALIGN_BOTTOM_MID, 0, 0);
+
   lv_obj_set_style_bg_opa(btn_container, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(btn_container, 0, 0);
   lv_obj_set_style_pad_all(btn_container, 0, 0);
+
+  lv_obj_set_scroll_dir(btn_container, LV_DIR_VER);
   lv_obj_add_flag(btn_container, LV_OBJ_FLAG_SCROLLABLE);
 }
 
