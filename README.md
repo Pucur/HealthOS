@@ -45,6 +45,15 @@ HealthOS is a local IoT calorie tracking system built on ESP32 with a touchscree
 ## 🏠 Integration
 
 - Home Assistant REST sensors  
+```
+sensor:
+  - platform: rest
+    name: "HealthOS Calorie"
+    resource: http://SERVER_IP:8000/today
+    value_template: "{{ value_json.total_kcal | float | round(0) | int }}"
+    unit_of_measurement: "kcal"
+    scan_interval: 60
+```
 
 ---
 
@@ -101,6 +110,11 @@ Returns daily calorie summary.
 - Graph dashboard UI  
 
 ---
+
+## TESTED WITH
+
+- Waveshare ESP32-C6-Touch-LCD-1.47 (I will replace to ESP32-S3 3.5" touch because thats bigger)
+- Raspberry Pi 5 (server)
 
 ## ⚠️ Notes
 
