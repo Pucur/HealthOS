@@ -23,8 +23,7 @@ const char* ssid = "wifi";
 const char* pass = "pass";
 const unsigned long WIFI_RECONNECT_INTERVAL = 10000;
 unsigned long lastWifiCheck = 0;
-String server = "http://HOST_IP:8000";
-
+String server = "http://192.168.1.1:8000";
 
 lv_obj_t *label_kcal;
 lv_obj_t *btn_container;
@@ -48,9 +47,12 @@ Arduino_GFX *gfx = new Arduino_ST7789(
 uint32_t screenWidth;
 uint32_t screenHeight;
 uint32_t bufSize;
-lv_disp_draw_buf_t draw_buf;
+
+/* ================= LVGL 9 FIX ================= */
+lv_draw_buf_t draw_buf;
 lv_color_t *disp_draw_buf;
-lv_disp_drv_t disp_drv;
+lv_display_t *disp;
+/* ============================================== */
 
 void lcd_reg_init(void) {
   static const uint8_t init_operations[] = {
@@ -144,9 +146,9 @@ void send_food_to_server(const char* food, float amount) {
   snprintf(body, sizeof(body), "{\"food\":\"%s\",\"amount\":%.0f}", food, amount);
   http.POST((uint8_t*)body, strlen(body));
   http.end();
+
   load_kcal();
 }
-
 
 void add_food_button(const char* name, int x, int y) {
   lv_obj_t *btn = lv_btn_create(btn_container);
@@ -157,7 +159,6 @@ void add_food_button(const char* name, int x, int y) {
   lv_label_set_text(label, name);
   lv_obj_center(label);
 
-  //lv_obj_add_event_cb(btn, food_btn_cb, LV_EVENT_CLICKED, (void*)name);
   lv_obj_add_event_cb(btn, food_btn_cb, LV_EVENT_LONG_PRESSED, (void*)name);
   lv_obj_set_style_bg_color(btn, lv_color_hex(0xff0000), LV_PART_MAIN | LV_STATE_PRESSED);
 }
@@ -187,22 +188,20 @@ void load_foods_from_server() {
 
   food_count = idx;
 
-int cols = screenWidth / 84;
+  int cols = screenWidth / 84;
+  int x = 4;
+  int y = 4;
 
-int x = 4;
-int y = 4;
+  for (int i = 0; i < food_count; i++) {
+    add_food_button(foods[i].name.c_str(), x, y);
 
-for (int i = 0; i < food_count; i++) {
+    x += 106;
 
-  add_food_button(foods[i].name.c_str(), x, y);
-
-  x += 106;
-
-  if ((i + 1) % cols == 0) {
-    x = 4;
-    y += 42;
+    if ((i + 1) % cols == 0) {
+      x = 4;
+      y += 42;
+    }
   }
-}
 }
 
 void load_kcal() {
@@ -218,52 +217,58 @@ void load_kcal() {
 
   lv_color_t color;
 
-  if (total <= 2000) {
-    color = lv_color_hex(0x00C853); // zöld
-  } 
-  else if (total <= 2900) {
-    color = lv_color_hex(0xFFD600); // sárga
-  } 
-  else {
-    color = lv_color_hex(0xD50000); // piros
-  }
+  if (total <= 2000) color = lv_color_hex(0x00C853);
+  else if (total <= 2900) color = lv_color_hex(0xFFD600);
+  else color = lv_color_hex(0xD50000);
 
   lv_obj_set_style_text_color(label_kcal, color, 0);
 }
 
-void my_disp_flush(lv_disp_drv_t *disp_drv, const lv_area_t *area, lv_color_t *color_p) {
-  uint32_t w = (area->x2 - area->x1 + 1);
-  uint32_t h = (area->y2 - area->y1 + 1);
+/* ================= LVGL 9 FLUSH FIX ================= */
+void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
+  uint32_t w = area->x2 - area->x1 + 1;
+  uint32_t h = area->y2 - area->y1 + 1;
 
 #if (LV_COLOR_16_SWAP != 0)
-  gfx->draw16bitBeRGBBitmap(area->x1, area->y1, (uint16_t *)&color_p->full, w, h);
+  gfx->draw16bitBeRGBBitmap(area->x1, area->y1, (uint16_t *)px_map, w, h);
 #else
-  gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)&color_p->full, w, h);
+  gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)px_map, w, h);
 #endif
 
-  lv_disp_flush_ready(disp_drv);
+  lv_display_flush_ready(disp);
 }
+/* =================================================== */
 
-void touchpad_read_cb(lv_indev_drv_t *indev_drv, lv_indev_data_t *data) {
+void touchpad_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
   touch_data_t touch_data;
   bsp_touch_read();
 
-  bool touchpad_pressed = bsp_touch_get_coordinates(&touch_data);
+  bool pressed = bsp_touch_get_coordinates(&touch_data);
 
-  if (touchpad_pressed) {
+  if (pressed) {
     data->point.x = touch_data.coords[0].x;
     data->point.y = touch_data.coords[0].y;
     data->state = LV_INDEV_STATE_PRESSED;
 
     lastTouch = millis();
 
-
-  if (dimmed) {
-  ledcWrite(GFX_BL, 800);
-  dimmed = false;
-}
+    if (dimmed) {
+      ledcWrite(GFX_BL, 800);
+      dimmed = false;
+    }
   } else {
     data->state = LV_INDEV_STATE_RELEASED;
+  }
+
+  data->continue_reading = false;
+}
+
+void food_btn_cb(lv_event_t *e) {
+  lv_event_code_t code = lv_event_get_code(e);
+  const char* food = (const char*)lv_event_get_user_data(e);
+
+  if (code == LV_EVENT_LONG_PRESSED) {
+    send_food_to_server(food, 100);
   }
 }
 
@@ -283,30 +288,18 @@ void create_home() {
   lv_obj_set_style_border_width(btn_container, 0, 0);
   lv_obj_set_style_pad_all(btn_container, 0, 0);
   lv_obj_add_flag(btn_container, LV_OBJ_FLAG_SCROLLABLE);
-  lv_indev_t *indev = lv_indev_get_next(NULL);
-  lv_obj_set_style_anim_time(lv_scr_act(), 1000, 0);
 }
 
-void food_btn_cb(lv_event_t *e) {
-  lv_event_code_t code = lv_event_get_code(e);
-  const char* food = (const char*)lv_event_get_user_data(e);
-
-  if (code == LV_EVENT_LONG_PRESSED) {
-    send_food_to_server(food, 100);
-  }
-}
-
+/* ================= SETUP ================= */
 void setup() {
   Serial.begin(115200);
 
-ledcAttach(GFX_BL, LEDC_FREQ, LEDC_TIMER_10_BIT);
-ledcWrite(GFX_BL, 800); // start brightness
+  ledcAttach(GFX_BL, LEDC_FREQ, LEDC_TIMER_10_BIT);
+  ledcWrite(GFX_BL, 800);
 
-  if (!gfx->begin()) {
-    Serial.println("gfx->begin() failed!");
-  }
-
+  gfx->begin();
   lcd_reg_init();
+
   gfx->setRotation(ROTATION);
   gfx->fillScreen(RGB565_BLACK);
 
@@ -319,23 +312,25 @@ ledcWrite(GFX_BL, 800); // start brightness
   screenHeight = gfx->height();
   bufSize = screenWidth * 40;
 
-  disp_draw_buf = (lv_color_t *)heap_caps_malloc(bufSize * 2, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  if (!disp_draw_buf) disp_draw_buf = (lv_color_t *)heap_caps_malloc(bufSize * 2, MALLOC_CAP_8BIT);
-  if (!disp_draw_buf) while (1);
+  disp_draw_buf = (lv_color_t *)heap_caps_malloc(bufSize * sizeof(lv_color_t),
+                      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 
-  lv_disp_draw_buf_init(&draw_buf, disp_draw_buf, NULL, bufSize);
+  if (!disp_draw_buf)
+    disp_draw_buf = (lv_color_t *)heap_caps_malloc(bufSize * sizeof(lv_color_t),
+                      MALLOC_CAP_8BIT);
 
-  lv_disp_drv_init(&disp_drv);
-  disp_drv.hor_res = screenWidth;
-  disp_drv.ver_res = screenHeight;
-  disp_drv.flush_cb = my_disp_flush;
-  disp_drv.draw_buf = &draw_buf;
-  lv_disp_drv_register(&disp_drv);
-  static lv_indev_drv_t indev_drv;
-  lv_indev_drv_init(&indev_drv);
-  indev_drv.type = LV_INDEV_TYPE_POINTER;
-  indev_drv.read_cb = touchpad_read_cb;
-  lv_indev_drv_register(&indev_drv);
+  /* ================= DISPLAY ================= */
+  disp = lv_display_create(screenWidth, screenHeight);
+  lv_display_set_flush_cb(disp, my_disp_flush);
+  lv_display_set_buffers(disp, disp_draw_buf, NULL,
+                         bufSize * sizeof(lv_color_t),
+                         LV_DISPLAY_RENDER_MODE_PARTIAL);
+  /* ========================================== */
+
+  /* INPUT */
+  lv_indev_t *indev = lv_indev_create();
+  lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+  lv_indev_set_read_cb(indev, touchpad_read_cb);
 
   wifi_connect();
 
@@ -344,23 +339,35 @@ ledcWrite(GFX_BL, 800); // start brightness
   load_kcal();
 }
 
+static uint32_t last_tick = 0;
+
+/* ================= LOOP ================= */
 void loop() {
-    unsigned long now = millis();
+  unsigned long now = millis();
+
   if (WiFi.status() != WL_CONNECTED && now - lastWifiCheck > WIFI_RECONNECT_INTERVAL) {
     lastWifiCheck = now;
     WiFi.disconnect();
     WiFi.begin(ssid, pass);
   }
-  lv_timer_handler();
-  delay(5);
+
+
+
   static unsigned long last = 0;
-  if (millis() - last > 30000) { 
+  if (millis() - last > 30000) {
     last = millis();
-  load_foods_from_server();
+    load_foods_from_server();
   }
 
-if (!dimmed && millis() - lastTouch > 30000) {
-  ledcWrite(GFX_BL, 50);
-  dimmed = true;
-}
+  if (!dimmed && millis() - lastTouch > 30000) {
+    ledcWrite(GFX_BL, 50);
+    dimmed = true;
+  }
+
+  uint32_t noww = millis();
+  lv_tick_inc(noww - last_tick);
+  last_tick = noww;
+
+  lv_timer_handler();
+  delay(5);
 }
