@@ -137,7 +137,7 @@ String http_get(const String& path) {
   return payload;
 }
 
-void send_food_to_server(const char* food, float amount) {
+void send_food_to_server(const char* food) {
   if (WiFi.status() != WL_CONNECTED) return;
 
   HTTPClient http;
@@ -145,7 +145,8 @@ void send_food_to_server(const char* food, float amount) {
   http.addHeader("Content-Type", "application/json");
 
   char body[128];
-  snprintf(body, sizeof(body), "{\"food\":\"%s\",\"amount\":%.0f}", food, amount);
+  snprintf(body, sizeof(body), "{\"food\":\"%s\"}", food);
+
   http.POST((uint8_t*)body, strlen(body));
   http.end();
 
@@ -274,7 +275,7 @@ void food_btn_cb(lv_event_t *e) {
   const char* food = (const char*)lv_event_get_user_data(e);
 
   if (code == LV_EVENT_LONG_PRESSED) {
-    send_food_to_server(food, 100);
+    send_food_to_server(food);
   }
 }
 
