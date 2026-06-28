@@ -29,7 +29,7 @@ def init_db():
     c.execute("""
     CREATE TABLE IF NOT EXISTS foods (
         name TEXT PRIMARY KEY,
-        kcal_per_100 REAL NOT NULL,
+        kcal REAL NOT NULL,
         meal_type TEXT NOT NULL
     )
     """)
@@ -38,7 +38,6 @@ def init_db():
     CREATE TABLE IF NOT EXISTS logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         food TEXT NOT NULL,
-        amount REAL NOT NULL,
         kcal REAL NOT NULL,
         date TEXT NOT NULL,
         time TEXT NOT NULL
@@ -49,8 +48,8 @@ def init_db():
 
     for f in foods:
         c.execute(
-            "INSERT OR IGNORE INTO foods (name, kcal_per_100, meal_type) VALUES (?, ?, ?)",
-            (f["name"], f["kcal_per_100"], f["meal_type"])
+            "INSERT OR IGNORE INTO foods (name, kcal, meal_type) VALUES (?, ?, ?)",
+            (f["name"], f["kcal"], f["meal_type"])
         )
 
     conn.commit()
@@ -70,35 +69,33 @@ def get_meal_type():
 
 class FoodLog(BaseModel):
     food: str
-    amount: float
-
 
 @app.post("/log")
 def log_food(data: FoodLog):
     conn = get_conn()
     c = conn.cursor()
 
-    c.execute("SELECT kcal_per_100 FROM foods WHERE name = ?", (data.food,))
+    c.execute("SELECT kcal FROM foods WHERE name = ?", (data.food,))
     row = c.fetchone()
 
     if not row:
         conn.close()
         return {"error": "unknown food"}
 
-    kcal = (row[0] * data.amount) / 100.0
+    kcal = row[0]
     now = datetime.now()
     date = now.strftime("%Y-%m-%d")
     time = now.strftime("%H:%M")
 
     c.execute(
-        "INSERT INTO logs (food, amount, kcal, date, time) VALUES (?, ?, ?, ?, ?)",
-        (data.food, data.amount, kcal, date, time),
+        "INSERT INTO logs (food, kcal, date, time) VALUES (?, ?, ?, ?)",
+        (data.food, kcal, date, time),
     )
 
     conn.commit()
     conn.close()
 
-    return {"food": data.food, "amount": data.amount, "kcal": kcal, "time": time}
+    return {"food": data.food, "kcal": kcal, "time": time}
 
 
 @app.get("/today")
@@ -108,18 +105,18 @@ def today():
 
     today_date = datetime.now().strftime("%Y-%m-%d")
     c.execute(
-        "SELECT food, amount, kcal, time FROM logs WHERE date = ? ORDER BY id ASC",
+        "SELECT food, kcal, time FROM logs WHERE date = ? ORDER BY id ASC",
         (today_date,),
     )
     rows = c.fetchall()
     conn.close()
 
-    total = sum(r[2] for r in rows)
+    total = sum(r[1] for r in rows)
 
     return {
         "total_kcal": total,
         "items": [
-            {"food": r[0], "amount": r[1], "kcal": r[2], "time": r[3]}
+            {"food": r[0], "kcal": r[1], "time": r[2]}
             for r in rows
         ],
     }
@@ -133,7 +130,7 @@ def foods():
     meal = get_meal_type()
 
     c.execute("""
-        SELECT name, kcal_per_100
+        SELECT name, kcal
         FROM foods
         WHERE meal_type = ? OR meal_type = 'any'
         ORDER BY name ASC
@@ -144,7 +141,7 @@ def foods():
 
     return {
         "foods": [
-            {"name": r[0], "kcal_per_100": r[1]}
+            {"name": r[0], "kcal": r[1]}
             for r in rows
         ]
     }
