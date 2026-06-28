@@ -113,7 +113,8 @@ Returns daily calorie summary.
 
 ## 👩🏻‍🔬 TESTED WITH
 
-- Waveshare ESP32-C6-Touch-LCD-1.47 (I will replace to ESP32-S3 3.5" touch because thats bigger)
+- Waveshare ESP32-C6-Touch-LCD-1.47
+- UleFone Paris (Android 5.1)
 - Raspberry Pi 5 (server)
 
 ## ⚠️ Notes
